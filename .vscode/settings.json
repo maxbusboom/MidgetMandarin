@@ -1,0 +1,15 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/sidecar/.venv/bin/python",
+  "rust-analyzer.linkedProjects": ["src-tauri/Cargo.toml"],
+  "files.watcherExclude": {
+    "**/target/**": true,
+    "**/node_modules/**": true,
+    "**/data/library/**": true,
+    "**/*.sqlite": true
+  },
+  "search.exclude": {
+    "**/target": true,
+    "**/node_modules": true,
+    "**/data/library": true
+  }
+}

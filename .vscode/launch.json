@@ -1,0 +1,21 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: NLP sidecar",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/sidecar/main.py",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "Tauri: debug app",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/src-tauri/target/debug/midget-mandarin",
+      "args": [],
+      "cwd": "${workspaceFolder}/src-tauri"
+    }
+  ]
+}

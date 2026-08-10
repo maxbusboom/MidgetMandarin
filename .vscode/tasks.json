@@ -1,0 +1,28 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "tauri: dev",
+      "type": "shell",
+      "command": "npm run tauri dev",
+      "group": "build",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "sidecar: run (standalone)",
+      "type": "shell",
+      "command": "${workspaceFolder}/sidecar/.venv/bin/python sidecar/main.py",
+      "group": "build",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "cedict: rebuild dictionary db",
+      "type": "shell",
+      "command": "${workspaceFolder}/sidecar/.venv/bin/python data/cedict/build_db.py",
+      "group": "build",
+      "problemMatcher": []
+    }
+  ]
+}
