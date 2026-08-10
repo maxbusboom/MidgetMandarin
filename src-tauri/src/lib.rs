@@ -1,4 +1,5 @@
 mod db;
+mod library;
 mod sidecar;
 
 use std::sync::Mutex;
@@ -22,6 +23,7 @@ async fn sidecar_health() -> Result<serde_json::Value, String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(sidecar::SidecarProcess(Mutex::new(None)))
         .setup(|app| {
             let app_data_dir = app.path().app_data_dir()?;
@@ -34,7 +36,13 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![greet, sidecar_health])
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            sidecar_health,
+            library::import_pdf,
+            library::list_library,
+            library::get_document
+        ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
                 if let Some(state) = window.try_state::<sidecar::SidecarProcess>() {

@@ -1,67 +1,14 @@
 import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import { Library } from "./Library";
+import { Reader } from "./Reader";
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
-  const [sidecarStatus, setSidecarStatus] = useState("");
+  const [openId, setOpenId] = useState<number | null>(null);
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }
-
-  async function checkSidecar() {
-    try {
-      const result = await invoke("sidecar_health");
-      setSidecarStatus(JSON.stringify(result));
-    } catch (e) {
-      setSidecarStatus(`error: ${e}`);
-    }
-  }
-
-  return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
-
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-
-      <div className="row">
-        <button type="button" onClick={checkSidecar}>
-          Check NLP sidecar
-        </button>
-      </div>
-      <p>{sidecarStatus}</p>
-    </main>
+  return openId === null ? (
+    <Library onOpen={setOpenId} />
+  ) : (
+    <Reader id={openId} onBack={() => setOpenId(null)} />
   );
 }
 

@@ -32,6 +32,34 @@ pub fn spawn() -> std::io::Result<Child> {
         .spawn()
 }
 
+#[derive(serde::Deserialize)]
+pub struct ExtractResult {
+    pub page_count: i64,
+    pub text: String,
+}
+
+pub async fn extract_text(path: &std::path::Path) -> Result<ExtractResult, String> {
+    let url = format!("http://127.0.0.1:{SIDECAR_PORT}/extract");
+    let resp = reqwest::Client::new()
+        .post(&url)
+        .json(&serde_json::json!({ "path": path.to_string_lossy() }))
+        .send()
+        .await
+        .map_err(|e| format!("sidecar request failed: {e}"))?;
+
+    if resp.status().is_success() {
+        resp.json::<ExtractResult>().await.map_err(|e| e.to_string())
+    } else {
+        let detail = resp
+            .json::<serde_json::Value>()
+            .await
+            .ok()
+            .and_then(|v| v.get("detail").and_then(|d| d.as_str()).map(str::to_string))
+            .unwrap_or_else(|| "PDF extraction failed".to_string());
+        Err(detail)
+    }
+}
+
 pub async fn health_check() -> Result<serde_json::Value, String> {
     let url = format!("http://127.0.0.1:{SIDECAR_PORT}/health");
 

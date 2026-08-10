@@ -1,1 +1,27 @@
 @import "tailwindcss";
+
+/* Bundled CJK fonts (OFL-licensed, see src/assets/fonts/OFL.txt) — variable
+   fonts covering the full weight axis in one file each, so both simplified
+   and traditional rendering hold to one consistent look across OSes rather
+   than depending on whatever's installed. */
+@font-face {
+  font-family: "Noto Sans SC";
+  src: url("./assets/fonts/NotoSansSC-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Noto Sans TC";
+  src: url("./assets/fonts/NotoSansTC-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+.font-zh-simplified {
+  font-family: "Noto Sans SC", sans-serif;
+}
+.font-zh-traditional {
+  font-family: "Noto Sans TC", sans-serif;
+}

@@ -9,8 +9,12 @@ whole app.
 
 import os
 
+import pymupdf
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+
+from pdf_extract import NoTextLayerError, extract_text
 
 app = FastAPI(title="Midget Mandarin sidecar")
 
@@ -18,6 +22,31 @@ app = FastAPI(title="Midget Mandarin sidecar")
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+class ExtractRequest(BaseModel):
+    path: str
+
+
+class ExtractResponse(BaseModel):
+    page_count: int
+    text: str
+
+
+@app.post("/extract", response_model=ExtractResponse)
+def extract(req: ExtractRequest) -> ExtractResponse:
+    try:
+        result = extract_text(req.path)
+    except pymupdf.FileNotFoundError:
+        raise HTTPException(status_code=404, detail="file not found")
+    except NoTextLayerError:
+        raise HTTPException(
+            status_code=422,
+            detail="This PDF has no extractable text layer — OCR isn't supported yet.",
+        )
+    except pymupdf.FileDataError as e:
+        raise HTTPException(status_code=400, detail=f"could not read PDF: {e}")
+    return ExtractResponse(**result)
 
 
 def main() -> None:

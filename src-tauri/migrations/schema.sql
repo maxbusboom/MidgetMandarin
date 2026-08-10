@@ -6,12 +6,13 @@
 -- never have competing writers.
 
 CREATE TABLE IF NOT EXISTS library (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    filename      TEXT NOT NULL,
-    title         TEXT NOT NULL,
-    added_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    page_count    INTEGER,
-    character_set TEXT NOT NULL DEFAULT 'simplified' CHECK (character_set IN ('simplified', 'traditional'))
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    filename       TEXT NOT NULL,
+    title          TEXT NOT NULL,
+    added_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    page_count     INTEGER,
+    character_set  TEXT NOT NULL DEFAULT 'simplified' CHECK (character_set IN ('simplified', 'traditional')),
+    extracted_text TEXT
 );
 
 CREATE TABLE IF NOT EXISTS vocab (
