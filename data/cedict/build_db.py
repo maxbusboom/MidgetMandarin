@@ -24,7 +24,7 @@ import sys
 import urllib.request
 from pathlib import Path
 
-CEDICT_URL = "https://www.mdbg.net/chindict/export/cedict/cedict_1_0_ts_utf-8_mdbg.txt.gz"
+CEDICT_URL = "https://www.mdbg.net/chinese/export/cedict/cedict_1_0_ts_utf-8_mdbg.txt.gz"
 
 # Matches lines like: 中國 中国 [Zhong1 guo2] /China/Middle Kingdom/
 ENTRY_RE = re.compile(r"^(\S+)\s+(\S+)\s+\[(.*?)\]\s+/(.*)/\s*$")
