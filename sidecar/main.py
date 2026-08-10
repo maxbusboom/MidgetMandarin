@@ -14,7 +14,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from pdf_extract import NoTextLayerError, extract_text
+from pdf_extract import NoTextLayerError, extract_content, render_page
 
 app = FastAPI(title="Midget Mandarin sidecar")
 
@@ -28,15 +28,16 @@ class ExtractRequest(BaseModel):
     path: str
 
 
-class ExtractResponse(BaseModel):
-    page_count: int
-    text: str
+class PageRequest(BaseModel):
+    path: str
+    page_number: int
+    dpi: int = 150
 
 
-@app.post("/extract", response_model=ExtractResponse)
-def extract(req: ExtractRequest) -> ExtractResponse:
+@app.post("/extract")
+def extract(req: ExtractRequest) -> dict:
     try:
-        result = extract_text(req.path)
+        return extract_content(req.path)
     except pymupdf.FileNotFoundError:
         raise HTTPException(status_code=404, detail="file not found")
     except NoTextLayerError:
@@ -46,7 +47,18 @@ def extract(req: ExtractRequest) -> ExtractResponse:
         )
     except pymupdf.FileDataError as e:
         raise HTTPException(status_code=400, detail=f"could not read PDF: {e}")
-    return ExtractResponse(**result)
+
+
+@app.post("/page")
+def page(req: PageRequest) -> dict:
+    try:
+        return render_page(req.path, req.page_number, req.dpi)
+    except pymupdf.FileNotFoundError:
+        raise HTTPException(status_code=404, detail="file not found")
+    except IndexError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except pymupdf.FileDataError as e:
+        raise HTTPException(status_code=400, detail=f"could not read PDF: {e}")
 
 
 def main() -> None:

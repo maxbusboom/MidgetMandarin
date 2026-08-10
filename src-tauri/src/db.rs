@@ -14,6 +14,7 @@ pub fn open(app_data_dir: &Path) -> rusqlite::Result<Connection> {
     // db; existing dev databases from before this column existed need it
     // added explicitly.
     ensure_column(&conn, "library", "extracted_text", "TEXT")?;
+    ensure_column(&conn, "library", "content_blocks", "TEXT")?;
     Ok(conn)
 }
 

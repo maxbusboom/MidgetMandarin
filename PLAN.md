@@ -45,7 +45,7 @@ This is a cross-platform **desktop app**, not web or mobile — driven by "no ac
 |---|---|---|
 | 0 — Foundation | Tauri + frontend scaffold; Python sidecar wired up over local IPC; SQLite schema | 1–2 wks |
 | 1 — Reader MVP | PDF import → PyMuPDF extraction → reflowed text in bundled font; library grid view | 2 wks |
-| 2 — Segmentation & highlighting | jieba integration; noun/verb/adjective faint highlight | 1–2 wks |
+| 2 — Segmentation & highlighting | jieba integration; noun/verb/adjective faint highlight | 1–2 wks | render images from original pdf| render LaTex from original pdf
 | 3 — Dictionary | CC-CEDICT → SQLite; click-word popup; personal vocab panel | 2 wks |
 | 4 — Anki export | genanki integration; export flow | 3–5 days |
 | 5 — AI features | Key management UI; chat panel; "use in a sentence"; AI-assisted segmentation fallback | 2–3 wks |

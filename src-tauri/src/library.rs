@@ -1,6 +1,6 @@
 //! Library grid + PDF import: pick a PDF, copy it into the app-data library
-//! folder, extract its text via the sidecar, and persist metadata + the
-//! extracted text in the `library` table.
+//! folder, extract its content via the sidecar, and persist metadata + the
+//! extracted content in the `library` table.
 
 use std::path::{Path, PathBuf};
 
@@ -28,6 +28,9 @@ pub struct DocumentText {
     character_set: String,
     page_count: Option<i64>,
     extracted_text: String,
+    /// Per-page interleaved text/image blocks for the reflow view — opaque
+    /// JSON parsed straight from what's stored (see sidecar::ExtractResult).
+    content_blocks: serde_json::Value,
 }
 
 fn library_dir(app: &AppHandle) -> PathBuf {
@@ -76,26 +79,26 @@ pub async fn import_pdf(app: AppHandle, db: State<'_, AppDb>) -> Result<LibraryE
     // alive across it — rusqlite::Connection isn't Send, and Tauri commands
     // require their whole future to be Send, so nothing that touches `conn`
     // can straddle an `.await`.
-    let (stored_filename, page_count, text) = copy_and_extract(&dir, &source_path).await?;
+    let (stored_filename, page_count, text, blocks) = copy_and_extract(&dir, &source_path).await?;
 
     let conn = db.0.lock().unwrap();
-    insert_entry(&conn, &stored_filename, &title, page_count, &text)
+    insert_entry(&conn, &stored_filename, &title, page_count, &text, &blocks)
 }
 
-/// Copies `source_path` into `library_dir` and extracts its text via the
+/// Copies `source_path` into `library_dir` and extracts its content via the
 /// sidecar — the part of `import_pdf` that doesn't need a real window, so
 /// it's testable on its own.
 async fn copy_and_extract(
     library_dir: &Path,
     source_path: &Path,
-) -> Result<(String, Option<i64>, String), String> {
+) -> Result<(String, Option<i64>, String, serde_json::Value), String> {
     std::fs::create_dir_all(library_dir).map_err(|e| e.to_string())?;
     let stored_filename = format!("{}.pdf", uuid::Uuid::new_v4());
     let stored_path = library_dir.join(&stored_filename);
     std::fs::copy(source_path, &stored_path).map_err(|e| e.to_string())?;
 
-    match sidecar::extract_text(&stored_path).await {
-        Ok(result) => Ok((stored_filename, Some(result.page_count), result.text)),
+    match sidecar::extract_content(&stored_path).await {
+        Ok(result) => Ok((stored_filename, Some(result.page_count), result.text, result.blocks)),
         Err(err) => {
             let _ = std::fs::remove_file(&stored_path);
             Err(err)
@@ -109,10 +112,17 @@ fn insert_entry(
     title: &str,
     page_count: Option<i64>,
     extracted_text: &str,
+    content_blocks: &serde_json::Value,
 ) -> Result<LibraryEntry, String> {
     conn.execute(
-        "INSERT INTO library (filename, title, page_count, extracted_text) VALUES (?1, ?2, ?3, ?4)",
-        rusqlite::params![filename, title, page_count, extracted_text],
+        "INSERT INTO library (filename, title, page_count, extracted_text, content_blocks) VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![
+            filename,
+            title,
+            page_count,
+            extracted_text,
+            content_blocks.to_string()
+        ],
     )
     .map_err(|e| e.to_string())?;
     let id = conn.last_insert_rowid();
@@ -139,18 +149,41 @@ pub fn list_library(db: State<'_, AppDb>) -> Result<Vec<LibraryEntry>, String> {
 pub fn get_document(id: i64, db: State<'_, AppDb>) -> Result<DocumentText, String> {
     let conn = db.0.lock().unwrap();
     conn.query_row(
-        "SELECT title, character_set, page_count, extracted_text FROM library WHERE id = ?1",
+        "SELECT title, character_set, page_count, extracted_text, content_blocks FROM library WHERE id = ?1",
         [id],
         |row| {
+            let blocks_text: Option<String> = row.get(4)?;
+            let content_blocks = blocks_text
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or(serde_json::Value::Null);
             Ok(DocumentText {
                 title: row.get(0)?,
                 character_set: row.get(1)?,
                 page_count: row.get(2)?,
                 extracted_text: row.get(3)?,
+                content_blocks,
             })
         },
     )
     .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_page_image(
+    id: i64,
+    page_number: i64,
+    app: AppHandle,
+    db: State<'_, AppDb>,
+) -> Result<serde_json::Value, String> {
+    let filename = {
+        let conn = db.0.lock().unwrap();
+        conn.query_row("SELECT filename FROM library WHERE id = ?1", [id], |row| {
+            row.get::<_, String>(0)
+        })
+        .map_err(|e| e.to_string())?
+    };
+    let path = library_dir(&app).join(filename);
+    sidecar::render_page(&path, page_number, 150).await
 }
 
 #[cfg(test)]
@@ -171,13 +204,14 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(include_str!("../migrations/schema.sql")).unwrap();
 
-        let (filename, page_count, text) = copy_and_extract(&tmp.join("library"), &pdf_path)
+        let (filename, page_count, text, blocks) = copy_and_extract(&tmp.join("library"), &pdf_path)
             .await
             .expect("import should succeed against a text-layer PDF");
-        let entry = insert_entry(&conn, &filename, "Test Doc", page_count, &text).unwrap();
+        let entry = insert_entry(&conn, &filename, "Test Doc", page_count, &text, &blocks).unwrap();
 
         assert_eq!(entry.title, "Test Doc");
         assert_eq!(entry.page_count, Some(1));
+        assert!(blocks.is_array());
 
         let fetched = conn
             .query_row(

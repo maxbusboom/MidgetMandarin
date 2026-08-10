@@ -32,32 +32,53 @@ pub fn spawn() -> std::io::Result<Child> {
         .spawn()
 }
 
-#[derive(serde::Deserialize)]
-pub struct ExtractResult {
-    pub page_count: i64,
-    pub text: String,
-}
-
-pub async fn extract_text(path: &std::path::Path) -> Result<ExtractResult, String> {
-    let url = format!("http://127.0.0.1:{SIDECAR_PORT}/extract");
+async fn post_json(endpoint: &str, body: serde_json::Value) -> Result<serde_json::Value, String> {
+    let url = format!("http://127.0.0.1:{SIDECAR_PORT}{endpoint}");
     let resp = reqwest::Client::new()
         .post(&url)
-        .json(&serde_json::json!({ "path": path.to_string_lossy() }))
+        .json(&body)
         .send()
         .await
         .map_err(|e| format!("sidecar request failed: {e}"))?;
 
     if resp.status().is_success() {
-        resp.json::<ExtractResult>().await.map_err(|e| e.to_string())
+        resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
     } else {
         let detail = resp
             .json::<serde_json::Value>()
             .await
             .ok()
             .and_then(|v| v.get("detail").and_then(|d| d.as_str()).map(str::to_string))
-            .unwrap_or_else(|| "PDF extraction failed".to_string());
+            .unwrap_or_else(|| "sidecar request failed".to_string());
         Err(detail)
     }
+}
+
+pub struct ExtractResult {
+    pub page_count: i64,
+    pub text: String,
+    /// Per-page interleaved text/image blocks — opaque JSON, since the
+    /// frontend is the one that interprets its shape (see PLAN.md phase 2).
+    pub blocks: serde_json::Value,
+}
+
+pub async fn extract_content(path: &std::path::Path) -> Result<ExtractResult, String> {
+    let mut value = post_json("/extract", serde_json::json!({ "path": path.to_string_lossy() })).await?;
+    let page_count = value["page_count"].as_i64().ok_or("sidecar response missing page_count")?;
+    let text = value["text"]
+        .as_str()
+        .ok_or("sidecar response missing text")?
+        .to_string();
+    let blocks = value["blocks"].take();
+    Ok(ExtractResult { page_count, text, blocks })
+}
+
+pub async fn render_page(path: &std::path::Path, page_number: i64, dpi: u32) -> Result<serde_json::Value, String> {
+    post_json(
+        "/page",
+        serde_json::json!({ "path": path.to_string_lossy(), "page_number": page_number, "dpi": dpi }),
+    )
+    .await
 }
 
 pub async fn health_check() -> Result<serde_json::Value, String> {
