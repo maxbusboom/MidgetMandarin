@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { WordPopup } from "./WordPopup";
+import { fontFamilyFor, ReadingSettingsPopover, useReadingSettings } from "./ReadingSettings";
 
 type Bucket = "n" | "v" | "a" | "o";
 type Token = [string, Bucket];
@@ -46,22 +47,22 @@ const BUCKET_CLASS: Record<Bucket, string> = {
 function Reflow({
   blocks,
   plainText,
-  fontClass,
+  textStyle,
   onWordClick,
 }: {
   blocks: ContentItem[][] | null;
   plainText: string;
-  fontClass: string;
+  textStyle: React.CSSProperties;
   onWordClick: WordClick;
 }) {
   if (!blocks) {
     // Pre-Phase-2 imports have no content_blocks — fall back to plain text
     // rather than crash on the missing structure.
-    return <div className={`whitespace-pre-wrap text-lg leading-relaxed ${fontClass}`}>{plainText}</div>;
+    return <div className="whitespace-pre-wrap" style={textStyle}>{plainText}</div>;
   }
 
   return (
-    <div className={`text-lg leading-relaxed ${fontClass}`}>
+    <div style={textStyle}>
       {blocks.map((page, pageIdx) => (
         <div key={pageIdx} className="mb-8 whitespace-pre-wrap">
           {page.map((item, itemIdx) =>
@@ -190,6 +191,8 @@ export function Reader({ id, onBack }: { id: number; onBack: () => void }) {
   const [view, setView] = useState<"reflow" | "pages">("reflow");
   const [error, setError] = useState("");
   const [popup, setPopup] = useState<{ word: string; position: { x: number; y: number } } | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const { settings, update: updateSettings } = useReadingSettings();
 
   useEffect(() => {
     invoke<DocumentText>("get_document", { id })
@@ -206,7 +209,7 @@ export function Reader({ id, onBack }: { id: number; onBack: () => void }) {
 
   return (
     <div className="mx-auto max-w-3xl p-6">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="relative mb-4 flex items-center justify-between">
         <button onClick={onBack} className="text-blue-600 hover:underline">
           ← Library
         </button>
@@ -226,22 +229,39 @@ export function Reader({ id, onBack }: { id: number; onBack: () => void }) {
             </button>
           </div>
           {view === "reflow" && (
-            <div className="flex gap-1">
+            <>
+              <div className="flex gap-1">
+                <button
+                  onClick={() => setCharSet("simplified")}
+                  className={`rounded px-2 py-1 ${charSet === "simplified" ? "bg-blue-600 text-white" : "bg-gray-100"}`}
+                >
+                  简体
+                </button>
+                <button
+                  onClick={() => setCharSet("traditional")}
+                  className={`rounded px-2 py-1 ${charSet === "traditional" ? "bg-blue-600 text-white" : "bg-gray-100"}`}
+                >
+                  繁體
+                </button>
+              </div>
               <button
-                onClick={() => setCharSet("simplified")}
-                className={`rounded px-2 py-1 ${charSet === "simplified" ? "bg-blue-600 text-white" : "bg-gray-100"}`}
+                onClick={() => setShowSettings((s) => !s)}
+                title="Reading settings"
+                className={`rounded px-2 py-1 font-serif ${showSettings ? "bg-blue-600 text-white" : "bg-gray-100"}`}
               >
-                简体
+                Aa
               </button>
-              <button
-                onClick={() => setCharSet("traditional")}
-                className={`rounded px-2 py-1 ${charSet === "traditional" ? "bg-blue-600 text-white" : "bg-gray-100"}`}
-              >
-                繁體
-              </button>
-            </div>
+            </>
           )}
         </div>
+
+        {showSettings && (
+          <ReadingSettingsPopover
+            settings={settings}
+            onChange={updateSettings}
+            onClose={() => setShowSettings(false)}
+          />
+        )}
       </div>
 
       {error && <p className="text-red-600">{error}</p>}
@@ -259,7 +279,11 @@ export function Reader({ id, onBack }: { id: number; onBack: () => void }) {
             <Reflow
               blocks={doc.content_blocks}
               plainText={doc.extracted_text}
-              fontClass={charSet === "simplified" ? "font-zh-simplified" : "font-zh-traditional"}
+              textStyle={{
+                fontFamily: fontFamilyFor(charSet, settings.font_family),
+                fontSize: settings.font_size,
+                lineHeight: settings.line_height,
+              }}
               onWordClick={handleWordClick}
             />
           ) : (

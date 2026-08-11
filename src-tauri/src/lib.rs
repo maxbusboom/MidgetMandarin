@@ -1,6 +1,7 @@
 mod cedict;
 mod db;
 mod library;
+mod settings;
 mod sidecar;
 mod vocab;
 
@@ -50,7 +51,9 @@ pub fn run() {
             vocab::lookup_word,
             vocab::add_vocab,
             vocab::remove_vocab,
-            vocab::list_vocab
+            vocab::list_vocab,
+            settings::get_reading_settings,
+            settings::set_reading_settings
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
