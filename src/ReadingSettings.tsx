@@ -5,9 +5,10 @@ export interface ReadingSettings {
   font_family: "sans" | "serif";
   font_size: number;
   line_height: number;
+  text_width_pct: number;
 }
 
-const DEFAULT_SETTINGS: ReadingSettings = { font_family: "sans", font_size: 18, line_height: 1.8 };
+const DEFAULT_SETTINGS: ReadingSettings = { font_family: "sans", font_size: 18, line_height: 1.8, text_width_pct: 100 };
 
 const FONT_SIZE_MIN = 14;
 const FONT_SIZE_MAX = 28;
@@ -15,6 +16,9 @@ const FONT_SIZE_STEP = 2;
 const LINE_HEIGHT_MIN = 1.4;
 const LINE_HEIGHT_MAX = 2.4;
 const LINE_HEIGHT_STEP = 0.2;
+const TEXT_WIDTH_MIN = 40;
+const TEXT_WIDTH_MAX = 100;
+const TEXT_WIDTH_STEP = 10;
 
 export function fontFamilyFor(charSet: "simplified" | "traditional", family: "sans" | "serif"): string {
   const base = family === "serif" ? "Noto Serif" : "Noto Sans";
@@ -99,7 +103,7 @@ export function ReadingSettingsPopover({
           </div>
         </div>
 
-        <div>
+        <div className="mb-3">
           <div className="mb-1 text-xs font-medium text-gray-500">Line spacing</div>
           <div className="flex items-center justify-between">
             <button
@@ -117,6 +121,31 @@ export function ReadingSettingsPopover({
                 onChange({ line_height: Math.min(LINE_HEIGHT_MAX, +(settings.line_height + LINE_HEIGHT_STEP).toFixed(1)) })
               }
               disabled={settings.line_height >= LINE_HEIGHT_MAX}
+              className="rounded bg-gray-100 px-3 py-1 disabled:opacity-40"
+            >
+              +
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-1 text-xs font-medium text-gray-500">Text width</div>
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() =>
+                onChange({ text_width_pct: Math.max(TEXT_WIDTH_MIN, settings.text_width_pct - TEXT_WIDTH_STEP) })
+              }
+              disabled={settings.text_width_pct <= TEXT_WIDTH_MIN}
+              className="rounded bg-gray-100 px-3 py-1 disabled:opacity-40"
+            >
+              −
+            </button>
+            <span className="text-sm text-gray-600">{settings.text_width_pct}%</span>
+            <button
+              onClick={() =>
+                onChange({ text_width_pct: Math.min(TEXT_WIDTH_MAX, settings.text_width_pct + TEXT_WIDTH_STEP) })
+              }
+              disabled={settings.text_width_pct >= TEXT_WIDTH_MAX}
               className="rounded bg-gray-100 px-3 py-1 disabled:opacity-40"
             >
               +

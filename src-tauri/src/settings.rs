@@ -1,6 +1,7 @@
-//! App-wide reading preferences (font family, size, line spacing) —
-//! persisted as a single JSON blob in the generic `settings` key/value
-//! table, since these apply across every document rather than per-doc.
+//! App-wide reading preferences (font family, size, line spacing, text
+//! column width) — persisted as a single JSON blob in the generic
+//! `settings` key/value table, since these apply across every document
+//! rather than per-doc.
 
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
@@ -13,6 +14,7 @@ pub struct ReadingSettings {
     pub font_family: String, // "sans" | "serif"
     pub font_size: f64,      // px
     pub line_height: f64,    // unitless multiplier
+    pub text_width_pct: f64, // % of the window's width
 }
 
 impl Default for ReadingSettings {
@@ -21,6 +23,7 @@ impl Default for ReadingSettings {
             font_family: "sans".into(),
             font_size: 18.0,
             line_height: 1.8,
+            text_width_pct: 100.0,
         }
     }
 }
@@ -75,6 +78,7 @@ mod tests {
         let s = read_settings(&conn);
         assert_eq!(s.font_family, "sans");
         assert_eq!(s.font_size, 18.0);
+        assert_eq!(s.text_width_pct, 100.0);
     }
 
     #[test]
@@ -84,12 +88,14 @@ mod tests {
             font_family: "serif".into(),
             font_size: 22.0,
             line_height: 2.0,
+            text_width_pct: 70.0,
         };
         write_settings(&conn, &custom).unwrap();
         let read = read_settings(&conn);
         assert_eq!(read.font_family, "serif");
         assert_eq!(read.font_size, 22.0);
         assert_eq!(read.line_height, 2.0);
+        assert_eq!(read.text_width_pct, 70.0);
     }
 
     #[test]
@@ -97,12 +103,12 @@ mod tests {
         let conn = test_db();
         write_settings(
             &conn,
-            &ReadingSettings { font_family: "sans".into(), font_size: 16.0, line_height: 1.5 },
+            &ReadingSettings { font_family: "sans".into(), font_size: 16.0, line_height: 1.5, text_width_pct: 100.0 },
         )
         .unwrap();
         write_settings(
             &conn,
-            &ReadingSettings { font_family: "serif".into(), font_size: 20.0, line_height: 1.9 },
+            &ReadingSettings { font_family: "serif".into(), font_size: 20.0, line_height: 1.9, text_width_pct: 60.0 },
         )
         .unwrap();
 

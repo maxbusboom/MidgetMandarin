@@ -267,7 +267,7 @@ export function Reader({ id, onBack }: { id: number; onBack: () => void }) {
       {error && <p className="text-red-600">{error}</p>}
 
       {doc && (
-        <>
+        <div style={{ width: `${settings.text_width_pct}%`, marginLeft: "auto", marginRight: "auto" }}>
           <h1 className="mb-1 text-xl font-semibold">{doc.title}</h1>
           {doc.page_count != null && (
             <p className="mb-4 text-sm text-gray-500">
@@ -289,7 +289,7 @@ export function Reader({ id, onBack }: { id: number; onBack: () => void }) {
           ) : (
             <OriginalPages id={id} pageCount={doc.page_count ?? 1} onWordClick={handleWordClick} />
           )}
-        </>
+        </div>
       )}
 
       {popup && (
