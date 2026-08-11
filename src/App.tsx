@@ -1,14 +1,21 @@
 import { useState } from "react";
 import { Library } from "./Library";
 import { Reader } from "./Reader";
+import { Vocab } from "./Vocab";
+
+type View = { kind: "library" } | { kind: "reader"; id: number } | { kind: "vocab" };
 
 function App() {
-  const [openId, setOpenId] = useState<number | null>(null);
+  const [view, setView] = useState<View>({ kind: "library" });
 
-  return openId === null ? (
-    <Library onOpen={setOpenId} />
-  ) : (
-    <Reader id={openId} onBack={() => setOpenId(null)} />
+  if (view.kind === "reader") {
+    return <Reader id={view.id} onBack={() => setView({ kind: "library" })} />;
+  }
+  if (view.kind === "vocab") {
+    return <Vocab onBack={() => setView({ kind: "library" })} />;
+  }
+  return (
+    <Library onOpen={(id) => setView({ kind: "reader", id })} onOpenVocab={() => setView({ kind: "vocab" })} />
   );
 }
 

@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { WordPopup } from "./WordPopup";
 
 type Bucket = "n" | "v" | "a" | "o";
 type Token = [string, Bucket];
@@ -15,11 +16,23 @@ interface DocumentText {
   content_blocks: ContentItem[][] | null;
 }
 
+interface WordBox {
+  text: string;
+  pos: Bucket;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
 interface PageImage {
   image_data: string;
   width: number;
   height: number;
+  words: WordBox[];
 }
+
+type WordClick = (word: string, position: { x: number; y: number }) => void;
 
 // Faint per PLAN.md's "faintly highlighted" — light tints only, everything
 // else (particles, punctuation, numbers, ...) stays plain.
@@ -34,10 +47,12 @@ function Reflow({
   blocks,
   plainText,
   fontClass,
+  onWordClick,
 }: {
   blocks: ContentItem[][] | null;
   plainText: string;
   fontClass: string;
+  onWordClick: WordClick;
 }) {
   if (!blocks) {
     // Pre-Phase-2 imports have no content_blocks — fall back to plain text
@@ -59,11 +74,19 @@ function Reflow({
               />
             ) : (
               <span key={itemIdx}>
-                {item.tokens.map(([text, bucket], tokenIdx) => (
-                  <span key={tokenIdx} className={BUCKET_CLASS[bucket]}>
-                    {text}
-                  </span>
-                ))}
+                {item.tokens.map(([text, bucket], tokenIdx) =>
+                  text.trim() ? (
+                    <span
+                      key={tokenIdx}
+                      onClick={(e) => onWordClick(text, { x: e.clientX, y: e.clientY })}
+                      className={`cursor-pointer hover:underline ${BUCKET_CLASS[bucket]}`}
+                    >
+                      {text}
+                    </span>
+                  ) : (
+                    <span key={tokenIdx}>{text}</span>
+                  ),
+                )}
               </span>
             ),
           )}
@@ -73,10 +96,20 @@ function Reflow({
   );
 }
 
-function OriginalPages({ id, pageCount }: { id: number; pageCount: number }) {
+function OriginalPages({
+  id,
+  pageCount,
+  onWordClick,
+}: {
+  id: number;
+  pageCount: number;
+  onWordClick: WordClick;
+}) {
   const [pageNumber, setPageNumber] = useState(0);
   const [page, setPage] = useState<PageImage | null>(null);
   const [error, setError] = useState("");
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [scale, setScale] = useState(1);
 
   useEffect(() => {
     setPage(null);
@@ -85,6 +118,18 @@ function OriginalPages({ id, pageCount }: { id: number; pageCount: number }) {
       .then(setPage)
       .catch((e) => setError(String(e)));
   }, [id, pageNumber]);
+
+  function updateScale() {
+    if (imgRef.current) {
+      setScale(imgRef.current.clientWidth / imgRef.current.naturalWidth);
+    }
+  }
+
+  useEffect(() => {
+    updateScale();
+    window.addEventListener("resize", updateScale);
+    return () => window.removeEventListener("resize", updateScale);
+  }, [page]);
 
   return (
     <div>
@@ -111,11 +156,29 @@ function OriginalPages({ id, pageCount }: { id: number; pageCount: number }) {
       {error && <p className="text-center text-red-600">{error}</p>}
 
       {page && (
-        <img
-          src={`data:image/png;base64,${page.image_data}`}
-          alt={`Page ${pageNumber + 1}`}
-          className="mx-auto max-w-full border border-gray-200 shadow-sm"
-        />
+        <div className="relative mx-auto" style={{ width: "fit-content" }}>
+          <img
+            ref={imgRef}
+            src={`data:image/png;base64,${page.image_data}`}
+            alt={`Page ${pageNumber + 1}`}
+            onLoad={updateScale}
+            className="mx-auto max-w-full border border-gray-200 shadow-sm"
+          />
+          {page.words.map((w, i) => (
+            <div
+              key={i}
+              onClick={(e) => onWordClick(w.text, { x: e.clientX, y: e.clientY })}
+              title={w.text}
+              className="absolute cursor-pointer hover:bg-yellow-300/30"
+              style={{
+                left: w.x0 * scale,
+                top: w.y0 * scale,
+                width: (w.x1 - w.x0) * scale,
+                height: (w.y1 - w.y0) * scale,
+              }}
+            />
+          ))}
+        </div>
       )}
     </div>
   );
@@ -126,6 +189,7 @@ export function Reader({ id, onBack }: { id: number; onBack: () => void }) {
   const [charSet, setCharSet] = useState<"simplified" | "traditional">("simplified");
   const [view, setView] = useState<"reflow" | "pages">("reflow");
   const [error, setError] = useState("");
+  const [popup, setPopup] = useState<{ word: string; position: { x: number; y: number } } | null>(null);
 
   useEffect(() => {
     invoke<DocumentText>("get_document", { id })
@@ -135,6 +199,10 @@ export function Reader({ id, onBack }: { id: number; onBack: () => void }) {
       })
       .catch((e) => setError(String(e)));
   }, [id]);
+
+  function handleWordClick(word: string, position: { x: number; y: number }) {
+    setPopup({ word, position });
+  }
 
   return (
     <div className="mx-auto max-w-3xl p-6">
@@ -192,11 +260,21 @@ export function Reader({ id, onBack }: { id: number; onBack: () => void }) {
               blocks={doc.content_blocks}
               plainText={doc.extracted_text}
               fontClass={charSet === "simplified" ? "font-zh-simplified" : "font-zh-traditional"}
+              onWordClick={handleWordClick}
             />
           ) : (
-            <OriginalPages id={id} pageCount={doc.page_count ?? 1} />
+            <OriginalPages id={id} pageCount={doc.page_count ?? 1} onWordClick={handleWordClick} />
           )}
         </>
+      )}
+
+      {popup && (
+        <WordPopup
+          word={popup.word}
+          position={popup.position}
+          sourceDocId={id}
+          onClose={() => setPopup(null)}
+        />
       )}
     </div>
   );

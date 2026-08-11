@@ -31,7 +31,7 @@ function TrashIcon() {
   );
 }
 
-export function Library({ onOpen }: { onOpen: (id: number) => void }) {
+export function Library({ onOpen, onOpenVocab }: { onOpen: (id: number) => void; onOpenVocab: () => void }) {
   const [entries, setEntries] = useState<LibraryEntry[]>([]);
   const [error, setError] = useState("");
   const [importing, setImporting] = useState(false);
@@ -86,13 +86,18 @@ export function Library({ onOpen }: { onOpen: (id: number) => void }) {
     <div className="p-6">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Library</h1>
-        <button
-          onClick={handleImport}
-          disabled={importing}
-          className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50"
-        >
-          {importing ? "Importing…" : "Import PDF"}
-        </button>
+        <div className="flex gap-2">
+          <button onClick={onOpenVocab} className="rounded bg-gray-100 px-4 py-2 hover:bg-gray-200">
+            My Vocabulary
+          </button>
+          <button
+            onClick={handleImport}
+            disabled={importing}
+            className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50"
+          >
+            {importing ? "Importing…" : "Import PDF"}
+          </button>
+        </div>
       </div>
 
       {error && (

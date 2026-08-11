@@ -59,6 +59,46 @@ def extract_content(path: str) -> dict:
     return {"page_count": page_count, "text": flat_text, "blocks": pages}
 
 
+def _word_boxes(page) -> list[dict]:
+    """Word-level boxes for click-to-dictionary hit-testing.
+
+    page.get_text("words") only splits on whitespace, which Chinese doesn't
+    use — an entire line comes back as "one word". Instead, pull
+    per-character boxes from rawdict, run jieba over each span's exact text
+    (same segmentation used for Reflow highlighting), and union the
+    constituent characters' boxes per jieba token. jieba's cut is a strict
+    partition of the input string, so walking it in lockstep with the char
+    list always stays aligned.
+    """
+    boxes = []
+    for block in page.get_text("rawdict")["blocks"]:
+        if block["type"] != 0:
+            continue
+        for line in block["lines"]:
+            for span in line["spans"]:
+                chars = span["chars"]
+                text = "".join(c["c"] for c in chars)
+                if not text.strip():
+                    continue
+                idx = 0
+                for word, bucket in tag_tokens(text):
+                    word_chars = chars[idx : idx + len(word)]
+                    idx += len(word)
+                    if not word.strip():
+                        continue
+                    boxes.append(
+                        {
+                            "text": word,
+                            "pos": bucket,
+                            "x0": min(c["bbox"][0] for c in word_chars),
+                            "y0": min(c["bbox"][1] for c in word_chars),
+                            "x1": max(c["bbox"][2] for c in word_chars),
+                            "y1": max(c["bbox"][3] for c in word_chars),
+                        }
+                    )
+    return boxes
+
+
 def render_page(path: str, page_number: int, dpi: int = 150) -> dict:
     """Rasterizes one page plus its word bounding boxes, for the
     original-layout fallback view (figures/equations/columns render exactly
@@ -69,26 +109,23 @@ def render_page(path: str, page_number: int, dpi: int = 150) -> dict:
             raise IndexError(f"page {page_number} out of range (0..{doc.page_count - 1})")
         page = doc[page_number]
         pix = page.get_pixmap(dpi=dpi)
-        words = [
-            {"text": w[4], "x0": w[0], "y0": w[1], "x1": w[2], "y1": w[3]}
-            for w in page.get_text("words")
-        ]
         scale = dpi / 72.0
         return {
             "image_data": base64.b64encode(pix.tobytes("png")).decode("ascii"),
             "width": pix.width,
             "height": pix.height,
-            # word boxes are in PDF points (72 dpi); scale to match the
-            # rendered pixmap so the frontend can overlay them directly.
+            # boxes are in PDF points (72 dpi); scale to match the rendered
+            # pixmap so the frontend can overlay them directly.
             "words": [
                 {
                     "text": w["text"],
+                    "pos": w["pos"],
                     "x0": w["x0"] * scale,
                     "y0": w["y0"] * scale,
                     "x1": w["x1"] * scale,
                     "y1": w["y1"] * scale,
                 }
-                for w in words
+                for w in _word_boxes(page)
             ],
         }
     finally:

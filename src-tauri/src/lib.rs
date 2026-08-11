@@ -1,6 +1,8 @@
+mod cedict;
 mod db;
 mod library;
 mod sidecar;
+mod vocab;
 
 use std::sync::Mutex;
 
@@ -25,6 +27,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(sidecar::SidecarProcess(Mutex::new(None)))
+        .manage(cedict::CedictDb(Mutex::new(cedict::open())))
         .setup(|app| {
             let app_data_dir = app.path().app_data_dir()?;
             let conn = db::open(&app_data_dir)?;
@@ -43,7 +46,11 @@ pub fn run() {
             library::list_library,
             library::get_document,
             library::get_page_image,
-            library::delete_document
+            library::delete_document,
+            vocab::lookup_word,
+            vocab::add_vocab,
+            vocab::remove_vocab,
+            vocab::list_vocab
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
