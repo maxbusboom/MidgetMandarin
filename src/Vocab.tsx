@@ -42,7 +42,7 @@ export function Vocab({ onBack }: { onBack: () => void }) {
   }
 
   return (
-    <div className="mx-auto max-w-2xl p-6">
+    <div className="w-full p-6">
       <div className="mb-6 flex items-center justify-between">
         <button onClick={onBack} className="text-blue-600 hover:underline">
           ← Library

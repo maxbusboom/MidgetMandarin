@@ -208,7 +208,7 @@ export function Reader({ id, onBack }: { id: number; onBack: () => void }) {
   }
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
+    <div className="w-full p-6">
       <div className="relative mb-4 flex items-center justify-between">
         <button onClick={onBack} className="text-blue-600 hover:underline">
           ← Library
