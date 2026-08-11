@@ -1,3 +1,4 @@
+mod ai;
 mod anki;
 mod cedict;
 mod db;
@@ -55,7 +56,15 @@ pub fn run() {
             vocab::list_vocab,
             settings::get_reading_settings,
             settings::set_reading_settings,
-            anki::export_vocab_to_anki
+            anki::export_vocab_to_anki,
+            ai::get_ai_settings,
+            ai::set_ai_settings,
+            ai::save_api_key,
+            ai::has_api_key,
+            ai::delete_api_key,
+            ai::ai_chat,
+            ai::ai_use_in_sentence,
+            ai::ai_explain_span
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {

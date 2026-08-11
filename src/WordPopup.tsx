@@ -13,19 +13,26 @@ export function WordPopup({
   word,
   position,
   sourceDocId,
+  context,
   onClose,
 }: {
   word: string;
   position: { x: number; y: number };
   sourceDocId: number | null;
+  context?: string;
   onClose: () => void;
 }) {
   const [results, setResults] = useState<WordResult[] | null>(null);
   const [error, setError] = useState("");
+  const [aiHelp, setAiHelp] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
 
   useEffect(() => {
     setResults(null);
     setError("");
+    setAiHelp("");
+    setAiError("");
     invoke<WordResult[]>("lookup_word", { word })
       .then(setResults)
       .catch((e) => setError(String(e)));
@@ -51,6 +58,33 @@ export function WordPopup({
     }
   }
 
+  async function handleUseInSentence() {
+    setAiLoading(true);
+    setAiError("");
+    try {
+      setAiHelp(await invoke<string>("ai_use_in_sentence", { word }));
+    } catch (e) {
+      setAiError(String(e));
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
+  // Segmentation fallback: jieba+CEDICT found nothing, which is the real,
+  // detectable signal that this span may be poetry/classical Chinese/a name
+  // rather than a plain lookup miss.
+  async function handleAskAi() {
+    setAiLoading(true);
+    setAiError("");
+    try {
+      setAiHelp(await invoke<string>("ai_explain_span", { span: word, context: context || word }));
+    } catch (e) {
+      setAiError(String(e));
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
   const style = {
     left: Math.min(position.x, window.innerWidth - 288),
     top: Math.min(position.y + 12, window.innerHeight - 240),
@@ -73,7 +107,7 @@ export function WordPopup({
         {error && <p className="text-sm text-red-600">{error}</p>}
         {!error && results === null && <p className="text-sm text-gray-400">Looking up…</p>}
         {results !== null && results.length === 0 && (
-          <p className="text-sm text-gray-400">No dictionary entry found.</p>
+          <p className="mb-2 text-sm text-gray-400">No dictionary entry found.</p>
         )}
 
         <div className="max-h-64 space-y-2 overflow-y-auto">
@@ -94,6 +128,22 @@ export function WordPopup({
             </div>
           ))}
         </div>
+
+        {results !== null && (
+          <div className="mt-2 border-t border-gray-100 pt-2">
+            {!aiHelp && !aiLoading && (
+              <button
+                onClick={results.length > 0 ? handleUseInSentence : handleAskAi}
+                className="w-full rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 hover:bg-gray-200"
+              >
+                {results.length > 0 ? "✨ Use in a sentence" : "✨ Ask AI about this"}
+              </button>
+            )}
+            {aiLoading && <p className="text-xs text-gray-400">Asking AI…</p>}
+            {aiError && <p className="text-xs text-red-600">{aiError}</p>}
+            {aiHelp && <p className="whitespace-pre-wrap text-sm">{aiHelp}</p>}
+          </div>
+        )}
       </div>
     </>
   );

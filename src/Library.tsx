@@ -31,7 +31,15 @@ function TrashIcon() {
   );
 }
 
-export function Library({ onOpen, onOpenVocab }: { onOpen: (id: number) => void; onOpenVocab: () => void }) {
+export function Library({
+  onOpen,
+  onOpenVocab,
+  onOpenAiSettings,
+}: {
+  onOpen: (id: number) => void;
+  onOpenVocab: () => void;
+  onOpenAiSettings: () => void;
+}) {
   const [entries, setEntries] = useState<LibraryEntry[]>([]);
   const [error, setError] = useState("");
   const [importing, setImporting] = useState(false);
@@ -87,6 +95,9 @@ export function Library({ onOpen, onOpenVocab }: { onOpen: (id: number) => void;
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Library</h1>
         <div className="flex gap-2">
+          <button onClick={onOpenAiSettings} className="rounded bg-gray-100 px-4 py-2 hover:bg-gray-200">
+            AI Settings
+          </button>
           <button onClick={onOpenVocab} className="rounded bg-gray-100 px-4 py-2 hover:bg-gray-200">
             My Vocabulary
           </button>

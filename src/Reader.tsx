@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { WordPopup } from "./WordPopup";
+import { ChatPanel } from "./ChatPanel";
 import { fontFamilyFor, ReadingSettingsPopover, useReadingSettings } from "./ReadingSettings";
 
 type Bucket = "n" | "v" | "a" | "o";
@@ -33,7 +34,7 @@ interface PageImage {
   words: WordBox[];
 }
 
-type WordClick = (word: string, position: { x: number; y: number }) => void;
+type WordClick = (word: string, position: { x: number; y: number }, context?: string) => void;
 
 // Faint per PLAN.md's "faintly highlighted" — light tints only, everything
 // else (particles, punctuation, numbers, ...) stays plain.
@@ -75,19 +76,22 @@ function Reflow({
               />
             ) : (
               <span key={itemIdx}>
-                {item.tokens.map(([text, bucket], tokenIdx) =>
-                  text.trim() ? (
-                    <span
-                      key={tokenIdx}
-                      onClick={(e) => onWordClick(text, { x: e.clientX, y: e.clientY })}
-                      className={`cursor-pointer hover:underline ${BUCKET_CLASS[bucket]}`}
-                    >
-                      {text}
-                    </span>
-                  ) : (
-                    <span key={tokenIdx}>{text}</span>
-                  ),
-                )}
+                {(() => {
+                  const sentenceContext = item.tokens.map(([t]) => t).join("");
+                  return item.tokens.map(([text, bucket], tokenIdx) =>
+                    text.trim() ? (
+                      <span
+                        key={tokenIdx}
+                        onClick={(e) => onWordClick(text, { x: e.clientX, y: e.clientY }, sentenceContext)}
+                        className={`cursor-pointer hover:underline ${BUCKET_CLASS[bucket]}`}
+                      >
+                        {text}
+                      </span>
+                    ) : (
+                      <span key={tokenIdx}>{text}</span>
+                    ),
+                  );
+                })()}
               </span>
             ),
           )}
@@ -190,8 +194,11 @@ export function Reader({ id, onBack }: { id: number; onBack: () => void }) {
   const [charSet, setCharSet] = useState<"simplified" | "traditional">("simplified");
   const [view, setView] = useState<"reflow" | "pages">("reflow");
   const [error, setError] = useState("");
-  const [popup, setPopup] = useState<{ word: string; position: { x: number; y: number } } | null>(null);
+  const [popup, setPopup] = useState<{ word: string; position: { x: number; y: number }; context?: string } | null>(
+    null,
+  );
   const [showSettings, setShowSettings] = useState(false);
+  const [showChat, setShowChat] = useState(false);
   const { settings, update: updateSettings } = useReadingSettings();
 
   useEffect(() => {
@@ -203,8 +210,8 @@ export function Reader({ id, onBack }: { id: number; onBack: () => void }) {
       .catch((e) => setError(String(e)));
   }, [id]);
 
-  function handleWordClick(word: string, position: { x: number; y: number }) {
-    setPopup({ word, position });
+  function handleWordClick(word: string, position: { x: number; y: number }, context?: string) {
+    setPopup({ word, position, context });
   }
 
   return (
@@ -253,6 +260,12 @@ export function Reader({ id, onBack }: { id: number; onBack: () => void }) {
               </button>
             </>
           )}
+          <button
+            onClick={() => setShowChat((s) => !s)}
+            className={`rounded px-2 py-1 ${showChat ? "bg-blue-600 text-white" : "bg-gray-100"}`}
+          >
+            ✨ Chat
+          </button>
         </div>
 
         {showSettings && (
@@ -296,10 +309,13 @@ export function Reader({ id, onBack }: { id: number; onBack: () => void }) {
         <WordPopup
           word={popup.word}
           position={popup.position}
+          context={popup.context}
           sourceDocId={id}
           onClose={() => setPopup(null)}
         />
       )}
+
+      {showChat && <ChatPanel docId={id} onClose={() => setShowChat(false)} />}
     </div>
   );
 }
