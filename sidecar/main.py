@@ -14,6 +14,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+from anki_export import export_apkg
 from pdf_extract import NoTextLayerError, extract_content, render_page
 
 app = FastAPI(title="Midget Mandarin sidecar")
@@ -32,6 +33,12 @@ class PageRequest(BaseModel):
     path: str
     page_number: int
     dpi: int = 150
+
+
+class ExportAnkiRequest(BaseModel):
+    words: list[dict]
+    deck_name: str
+    output_path: str
 
 
 @app.post("/extract")
@@ -59,6 +66,15 @@ def page(req: PageRequest) -> dict:
         raise HTTPException(status_code=400, detail=str(e))
     except pymupdf.FileDataError as e:
         raise HTTPException(status_code=400, detail=f"could not read PDF: {e}")
+
+
+@app.post("/export_anki")
+def export_anki(req: ExportAnkiRequest) -> dict:
+    try:
+        export_apkg(req.words, req.deck_name, req.output_path)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"failed to export Anki deck: {e}")
+    return {"status": "ok", "path": req.output_path}
 
 
 def main() -> None:

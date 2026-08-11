@@ -81,6 +81,23 @@ pub async fn render_page(path: &std::path::Path, page_number: i64, dpi: u32) -> 
     .await
 }
 
+pub async fn export_anki(
+    words: serde_json::Value,
+    deck_name: &str,
+    output_path: &std::path::Path,
+) -> Result<(), String> {
+    post_json(
+        "/export_anki",
+        serde_json::json!({
+            "words": words,
+            "deck_name": deck_name,
+            "output_path": output_path.to_string_lossy(),
+        }),
+    )
+    .await?;
+    Ok(())
+}
+
 pub async fn health_check() -> Result<serde_json::Value, String> {
     let url = format!("http://127.0.0.1:{SIDECAR_PORT}/health");
 

@@ -1,3 +1,4 @@
+mod anki;
 mod cedict;
 mod db;
 mod library;
@@ -53,7 +54,8 @@ pub fn run() {
             vocab::remove_vocab,
             vocab::list_vocab,
             settings::get_reading_settings,
-            settings::set_reading_settings
+            settings::set_reading_settings,
+            anki::export_vocab_to_anki
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {

@@ -102,7 +102,7 @@ fn remove_vocab_row(conn: &Connection, id: i64) -> Result<(), String> {
     Ok(())
 }
 
-fn list_vocab_rows(conn: &Connection) -> Result<Vec<VocabEntry>, String> {
+pub(crate) fn list_vocab_rows(conn: &Connection) -> Result<Vec<VocabEntry>, String> {
     let mut stmt = conn
         .prepare(&format!("SELECT {VOCAB_COLUMNS} FROM vocab ORDER BY added_at DESC"))
         .map_err(|e| e.to_string())?;

@@ -2,8 +2,8 @@ fastapi==0.115.6
 uvicorn==0.34.0
 pymupdf==1.28.2
 jieba==0.42.1
+genanki==0.13.1
 
 # Added in later phases (kept here so the file stays the single source of truth):
-# genanki     — Phase 4, .apkg export
 # spacy       — Phase 7, POS accuracy pass
 # pkuseg      — Phase 7, POS accuracy pass

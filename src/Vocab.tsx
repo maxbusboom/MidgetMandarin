@@ -14,6 +14,8 @@ interface VocabEntry {
 export function Vocab({ onBack }: { onBack: () => void }) {
   const [entries, setEntries] = useState<VocabEntry[]>([]);
   const [error, setError] = useState("");
+  const [status, setStatus] = useState("");
+  const [exporting, setExporting] = useState(false);
 
   async function refresh() {
     try {
@@ -41,6 +43,20 @@ export function Vocab({ onBack }: { onBack: () => void }) {
     }
   }
 
+  async function handleExport() {
+    setError("");
+    setStatus("");
+    setExporting(true);
+    try {
+      const path = await invoke<string>("export_vocab_to_anki");
+      setStatus(`Exported to ${path}`);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <div className="w-full p-6">
       <div className="mb-6 flex items-center justify-between">
@@ -48,9 +64,16 @@ export function Vocab({ onBack }: { onBack: () => void }) {
           ← Library
         </button>
         <h1 className="text-2xl font-semibold">My Vocabulary</h1>
-        <span className="w-16" />
+        <button
+          onClick={handleExport}
+          disabled={exporting || entries.length === 0}
+          className="rounded bg-blue-600 px-4 py-2 text-sm text-white disabled:opacity-50"
+        >
+          {exporting ? "Exporting…" : "Export to Anki"}
+        </button>
       </div>
 
+      {status && <div className="mb-4 rounded bg-green-100 px-3 py-2 text-sm text-green-800">{status}</div>}
       {error && <div className="mb-4 rounded bg-red-100 px-3 py-2 text-sm text-red-800">{error}</div>}
 
       {entries.length === 0 ? (
