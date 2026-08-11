@@ -42,7 +42,8 @@ pub fn run() {
             library::import_pdf,
             library::list_library,
             library::get_document,
-            library::get_page_image
+            library::get_page_image,
+            library::delete_document
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {

@@ -145,27 +145,89 @@ pub fn list_library(db: State<'_, AppDb>) -> Result<Vec<LibraryEntry>, String> {
     rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-pub fn get_document(id: i64, db: State<'_, AppDb>) -> Result<DocumentText, String> {
-    let conn = db.0.lock().unwrap();
+type DocumentRow = (String, String, Option<i64>, String, Option<String>, String);
+
+fn fetch_document_row(conn: &Connection, id: i64) -> Result<DocumentRow, String> {
     conn.query_row(
-        "SELECT title, character_set, page_count, extracted_text, content_blocks FROM library WHERE id = ?1",
+        "SELECT title, character_set, page_count, extracted_text, content_blocks, filename FROM library WHERE id = ?1",
         [id],
         |row| {
-            let blocks_text: Option<String> = row.get(4)?;
-            let content_blocks = blocks_text
-                .and_then(|s| serde_json::from_str(&s).ok())
-                .unwrap_or(serde_json::Value::Null);
-            Ok(DocumentText {
-                title: row.get(0)?,
-                character_set: row.get(1)?,
-                page_count: row.get(2)?,
-                extracted_text: row.get(3)?,
-                content_blocks,
-            })
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+            ))
         },
     )
     .map_err(|e| e.to_string())
+}
+
+fn persist_backfill(
+    conn: &Connection,
+    id: i64,
+    text: &str,
+    blocks: &serde_json::Value,
+    page_count: i64,
+) -> Result<(), String> {
+    conn.execute(
+        "UPDATE library SET extracted_text = ?1, content_blocks = ?2, page_count = ?3 WHERE id = ?4",
+        rusqlite::params![text, blocks.to_string(), page_count, id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_document(id: i64, app: AppHandle, db: State<'_, AppDb>) -> Result<DocumentText, String> {
+    let (title, character_set, page_count, extracted_text, blocks_text, filename) = {
+        let conn = db.0.lock().unwrap();
+        fetch_document_row(&conn, id)?
+    };
+
+    if let Some(blocks_str) = blocks_text {
+        let content_blocks = serde_json::from_str(&blocks_str).unwrap_or(serde_json::Value::Null);
+        return Ok(DocumentText { title, character_set, page_count, extracted_text, content_blocks });
+    }
+
+    // Imported before content_blocks existed (Phase 1) — backfill once by
+    // re-extracting from the still-stored PDF, then persist so this doesn't
+    // repeat on every open.
+    let path = library_dir(&app).join(&filename);
+    let result = sidecar::extract_content(&path).await?;
+    {
+        let conn = db.0.lock().unwrap();
+        persist_backfill(&conn, id, &result.text, &result.blocks, result.page_count)?;
+    }
+
+    Ok(DocumentText {
+        title,
+        character_set,
+        page_count: Some(result.page_count),
+        extracted_text: result.text,
+        content_blocks: result.blocks,
+    })
+}
+
+fn delete_row_and_get_filename(conn: &Connection, id: i64) -> Result<String, String> {
+    let filename: String = conn
+        .query_row("SELECT filename FROM library WHERE id = ?1", [id], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM library WHERE id = ?1", [id])
+        .map_err(|e| e.to_string())?;
+    Ok(filename)
+}
+
+#[tauri::command]
+pub fn delete_document(id: i64, app: AppHandle, db: State<'_, AppDb>) -> Result<(), String> {
+    let filename = {
+        let conn = db.0.lock().unwrap();
+        delete_row_and_get_filename(&conn, id)?
+    };
+    let _ = std::fs::remove_file(library_dir(&app).join(filename));
+    Ok(())
 }
 
 #[tauri::command]
@@ -221,6 +283,62 @@ mod tests {
             )
             .unwrap();
         assert!(fetched.contains("你好"));
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[tokio::test]
+    async fn get_document_backfills_content_blocks_for_legacy_rows() {
+        let tmp = std::env::temp_dir().join(format!("mm-test-{}", uuid::Uuid::new_v4()));
+        let pdf_path = tmp.join("source.pdf");
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(&pdf_path, pymupdf_test_pdf("你好，世界！")).unwrap();
+
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(include_str!("../migrations/schema.sql")).unwrap();
+
+        let library_dir = tmp.join("library");
+        let (filename, page_count, text, _blocks) = copy_and_extract(&library_dir, &pdf_path).await.unwrap();
+        // Simulate a Phase-1-era row: text present, content_blocks never populated.
+        let entry = insert_entry(&conn, &filename, "Legacy Doc", page_count, &text, &serde_json::Value::Null).unwrap();
+        conn.execute("UPDATE library SET content_blocks = NULL WHERE id = ?1", [entry.id])
+            .unwrap();
+
+        let (title, character_set, _page_count, extracted_text, blocks_text, filename) =
+            fetch_document_row(&conn, entry.id).unwrap();
+        assert!(blocks_text.is_none(), "row should start with no content_blocks");
+
+        let path = library_dir.join(&filename);
+        let result = sidecar::extract_content(&path).await.unwrap();
+        persist_backfill(&conn, entry.id, &result.text, &result.blocks, result.page_count).unwrap();
+
+        let (_, _, _, _, blocks_after, _) = fetch_document_row(&conn, entry.id).unwrap();
+        assert!(blocks_after.is_some(), "backfill should have populated content_blocks");
+        assert!(serde_json::from_str::<serde_json::Value>(&blocks_after.unwrap()).unwrap().is_array());
+        assert_eq!(title, "Legacy Doc");
+        assert_eq!(character_set, "simplified");
+        assert!(extracted_text.contains("你好"));
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn delete_document_removes_row_and_file() {
+        let tmp = std::env::temp_dir().join(format!("mm-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let pdf_path = tmp.join("stored.pdf");
+        std::fs::write(&pdf_path, b"fake pdf bytes").unwrap();
+
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(include_str!("../migrations/schema.sql")).unwrap();
+        let entry = insert_entry(&conn, "stored.pdf", "To Delete", Some(1), "text", &serde_json::json!([])).unwrap();
+
+        let filename = delete_row_and_get_filename(&conn, entry.id).unwrap();
+        std::fs::remove_file(tmp.join(&filename)).unwrap();
+
+        let remaining: i64 = conn.query_row("SELECT COUNT(*) FROM library", [], |r| r.get(0)).unwrap();
+        assert_eq!(remaining, 0);
+        assert!(!pdf_path.exists());
 
         std::fs::remove_dir_all(&tmp).ok();
     }

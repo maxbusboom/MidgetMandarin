@@ -9,6 +9,7 @@ const SCHEMA: &str = include_str!("../migrations/schema.sql");
 pub fn open(app_data_dir: &Path) -> rusqlite::Result<Connection> {
     std::fs::create_dir_all(app_data_dir).expect("failed to create app data dir");
     let conn = Connection::open(app_data_dir.join("midget-mandarin.sqlite"))?;
+    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
     conn.execute_batch(SCHEMA)?;
     // CREATE TABLE IF NOT EXISTS above only lays down the schema for a fresh
     // db; existing dev databases from before this column existed need it
