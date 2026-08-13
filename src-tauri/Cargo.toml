@@ -27,6 +27,18 @@ reqwest = { version = "0.12", features = ["json"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 tokio = { version = "1", features = ["time", "macros", "rt"] }
 uuid = { version = "1", features = ["v4"] }
-keyring = "3"
 async-trait = "0.1"
+
+# keyring has NO default features — without a platform backend enabled,
+# Entry::set_password/get_password silently no-op instead of touching the
+# real OS credential store (this is the root cause of the API key not
+# actually persisting). Each OS needs its own backend feature.
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["linux-native-sync-persistent"] }
 

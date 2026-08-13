@@ -42,7 +42,10 @@ export function AiSettingsPanel({ onBack }: { onBack: () => void }) {
   }
 
   async function handleSaveKey() {
-    if (!apiKey.trim()) return;
+    if (!apiKey.trim()) {
+      setError("Enter an API key first.");
+      return;
+    }
     setError("");
     try {
       await invoke("save_api_key", { provider: settings.provider, key: apiKey.trim() });
@@ -145,6 +148,7 @@ export function AiSettingsPanel({ onBack }: { onBack: () => void }) {
                 type="password"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSaveKey()}
                 placeholder={`${settings.provider} API key`}
                 className="flex-1 rounded border border-gray-300 px-3 py-2 text-sm"
               />
