@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { confirm } from "@tauri-apps/plugin-dialog";
 
 interface VocabEntry {
@@ -27,6 +28,12 @@ export function Vocab({ onBack }: { onBack: () => void }) {
 
   useEffect(() => {
     refresh();
+    // Vocab can also be added/removed from a detached dictionary window or
+    // the inline WordPopup (Phase 6) — stay live rather than going stale.
+    const unlisten = listen("vocab-changed", () => refresh());
+    return () => {
+      unlisten.then((f) => f());
+    };
   }, []);
 
   async function handleRemove(entry: VocabEntry) {

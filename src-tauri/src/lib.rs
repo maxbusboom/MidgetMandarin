@@ -67,10 +67,16 @@ pub fn run() {
             ai::ai_explain_span
         ])
         .on_window_event(|window, event| {
+            // Phase 6 adds detachable chat/dictionary windows — only kill the
+            // sidecar when the main window (not a popped-out one) closes,
+            // otherwise closing e.g. the chat popout would take down the NLP
+            // backend for every other window still open.
             if let tauri::WindowEvent::Destroyed = event {
-                if let Some(state) = window.try_state::<sidecar::SidecarProcess>() {
-                    if let Some(mut child) = state.0.lock().unwrap().take() {
-                        let _ = child.kill();
+                if window.label() == "main" {
+                    if let Some(state) = window.try_state::<sidecar::SidecarProcess>() {
+                        if let Some(mut child) = state.0.lock().unwrap().take() {
+                            let _ = child.kill();
+                        }
                     }
                 }
             }

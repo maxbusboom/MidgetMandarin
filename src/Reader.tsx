@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { emit } from "@tauri-apps/api/event";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { WordPopup } from "./WordPopup";
 import { ChatPanel } from "./ChatPanel";
 import { fontFamilyFor, ReadingSettingsPopover, useReadingSettings } from "./ReadingSettings";
@@ -362,8 +364,32 @@ export function Reader({ id, onBack }: { id: number; onBack: () => void }) {
       .catch((e) => setError(String(e)));
   }, [id]);
 
-  function handleWordClick(word: string, position: { x: number; y: number }, context?: string) {
+  // If the dictionary has been detached into its own window (Phase 6),
+  // route clicks there via a broadcast event instead of opening the inline
+  // popup — otherwise both would show for the same click.
+  async function handleWordClick(word: string, position: { x: number; y: number }, context?: string) {
+    const dictWindow = await WebviewWindow.getByLabel("dictionary");
+    if (dictWindow) {
+      await emit("word-selected", { word, context: context ?? null, sourceDocId: id });
+      await dictWindow.setFocus();
+      return;
+    }
     setPopup({ word, position, context });
+  }
+
+  async function handleDetachChat() {
+    const existing = await WebviewWindow.getByLabel("chat");
+    if (existing) {
+      await existing.setFocus();
+    } else {
+      new WebviewWindow("chat", {
+        url: `/?panel=chat&docId=${id}`,
+        title: doc ? `Chat — ${doc.title}` : "Chat",
+        width: 420,
+        height: 700,
+      });
+    }
+    setShowChat(false);
   }
 
   return (
@@ -412,12 +438,22 @@ export function Reader({ id, onBack }: { id: number; onBack: () => void }) {
               </button>
             </>
           )}
-          <button
-            onClick={() => setShowChat((s) => !s)}
-            className={`rounded px-2 py-1 ${showChat ? "bg-blue-600 text-white" : "bg-gray-100"}`}
-          >
-            ✨ Chat
-          </button>
+          <div className="flex gap-1">
+            <button
+              onClick={() => setShowChat((s) => !s)}
+              className={`rounded px-2 py-1 ${showChat ? "bg-blue-600 text-white" : "bg-gray-100"}`}
+            >
+              ✨ Chat
+            </button>
+            <button
+              onClick={handleDetachChat}
+              title="Open chat in a separate window"
+              aria-label="Detach chat to new window"
+              className="rounded bg-gray-100 px-2 py-1"
+            >
+              ⇱
+            </button>
+          </div>
         </div>
 
         {showSettings && (

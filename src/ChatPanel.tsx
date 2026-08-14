@@ -6,7 +6,18 @@ interface Message {
   content: string;
 }
 
-export function ChatPanel({ docId, onClose }: { docId: number; onClose: () => void }) {
+export function ChatPanel({
+  docId,
+  onClose,
+  standalone,
+}: {
+  docId: number;
+  onClose: () => void;
+  // Rendered as its own detached window (Phase 6) rather than an embedded
+  // right-side drawer — fills the window instead of floating over it, and
+  // has no close button since the OS window chrome does that job.
+  standalone?: boolean;
+}) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -31,12 +42,20 @@ export function ChatPanel({ docId, onClose }: { docId: number; onClose: () => vo
   }
 
   return (
-    <div className="fixed right-0 top-0 bottom-0 z-40 flex w-96 flex-col border-l border-gray-200 bg-white shadow-lg">
+    <div
+      className={
+        standalone
+          ? "flex h-screen w-screen flex-col bg-white"
+          : "fixed right-0 top-0 bottom-0 z-40 flex w-96 flex-col border-l border-gray-200 bg-white shadow-lg"
+      }
+    >
       <div className="flex items-center justify-between border-b border-gray-200 p-3">
         <h2 className="font-semibold">Chat about this document</h2>
-        <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-          ✕
-        </button>
+        {!standalone && (
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            ✕
+          </button>
+        )}
       </div>
 
       <div className="flex-1 space-y-3 overflow-y-auto p-3">
