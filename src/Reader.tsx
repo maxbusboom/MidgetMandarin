@@ -101,80 +101,94 @@ function Reflow({
   );
 }
 
-function OriginalPages({
+// Same faint tint used in Reflow, but with alpha so the underlying rendered
+// glyphs (baked into the page image) stay legible under the highlight.
+const OVERLAY_BUCKET_CLASS: Record<Bucket, string> = {
+  n: "bg-sky-300/40",
+  v: "bg-emerald-300/40",
+  a: "bg-fuchsia-300/40",
+  o: "",
+};
+
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 2;
+const ZOOM_STEP = 0.1;
+
+function PageSlot({
   id,
-  pageCount,
+  pageNumber,
+  containerWidth,
+  zoom,
   onWordClick,
 }: {
   id: number;
-  pageCount: number;
+  pageNumber: number;
+  containerWidth: number;
+  zoom: number;
   onWordClick: WordClick;
 }) {
-  const [pageNumber, setPageNumber] = useState(0);
   const [page, setPage] = useState<PageImage | null>(null);
+  const [shouldLoad, setShouldLoad] = useState(false);
   const [error, setError] = useState("");
-  const imgRef = useRef<HTMLImageElement>(null);
   const [scale, setScale] = useState(1);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  // Load lazily (with a generous rootMargin so it's ready just before it
+  // scrolls into view) rather than fetching every page up front. This only
+  // decides *whether* to load — which page is "current" for the page
+  // indicator is computed separately in the parent from scroll position, so
+  // there's a single source of truth instead of every page's observer
+  // racing to report itself.
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) setShouldLoad(true);
+      },
+      { root: null, rootMargin: "800px 0px", threshold: 0 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
 
   useEffect(() => {
-    setPage(null);
-    setError("");
+    if (!shouldLoad || page) return;
     invoke<PageImage>("get_page_image", { id, pageNumber })
       .then(setPage)
       .catch((e) => setError(String(e)));
-  }, [id, pageNumber]);
+  }, [shouldLoad, page, id, pageNumber]);
 
   function updateScale() {
     if (imgRef.current) {
       setScale(imgRef.current.clientWidth / imgRef.current.naturalWidth);
     }
   }
+  useEffect(updateScale, [page, containerWidth, zoom]);
 
-  useEffect(() => {
-    updateScale();
-    window.addEventListener("resize", updateScale);
-    return () => window.removeEventListener("resize", updateScale);
-  }, [page]);
+  const displayWidth = Math.max(1, containerWidth * zoom);
+  const placeholderHeight = page ? displayWidth * (page.height / page.width) : displayWidth * 1.414;
 
   return (
-    <div>
-      <div className="mb-3 flex items-center justify-center gap-3 text-sm">
-        <button
-          disabled={pageNumber === 0}
-          onClick={() => setPageNumber((p) => p - 1)}
-          className="rounded bg-gray-100 px-2 py-1 disabled:opacity-40"
-        >
-          ← Prev
-        </button>
-        <span>
-          Page {pageNumber + 1} of {pageCount}
-        </span>
-        <button
-          disabled={pageNumber >= pageCount - 1}
-          onClick={() => setPageNumber((p) => p + 1)}
-          className="rounded bg-gray-100 px-2 py-1 disabled:opacity-40"
-        >
-          Next →
-        </button>
-      </div>
-
-      {error && <p className="text-center text-red-600">{error}</p>}
-
-      {page && (
-        <div className="relative mx-auto" style={{ width: "fit-content" }}>
+    <div ref={rootRef} className="mb-4 flex justify-center" data-page-number={pageNumber}>
+      {error ? (
+        <p className="text-red-600">{error}</p>
+      ) : page ? (
+        <div className="relative" style={{ width: displayWidth }}>
           <img
             ref={imgRef}
             src={`data:image/png;base64,${page.image_data}`}
             alt={`Page ${pageNumber + 1}`}
             onLoad={updateScale}
-            className="mx-auto max-w-full border border-gray-200 shadow-sm"
+            className="w-full border border-gray-200 shadow-sm"
           />
           {page.words.map((w, i) => (
             <div
               key={i}
               onClick={(e) => onWordClick(w.text, { x: e.clientX, y: e.clientY })}
               title={w.text}
-              className="absolute cursor-pointer hover:bg-yellow-300/30"
+              className={`absolute cursor-pointer hover:bg-yellow-300/40 ${OVERLAY_BUCKET_CLASS[w.pos]}`}
               style={{
                 left: w.x0 * scale,
                 top: w.y0 * scale,
@@ -184,7 +198,145 @@ function OriginalPages({
             />
           ))}
         </div>
+      ) : (
+        <div
+          className="animate-pulse rounded bg-gray-100"
+          style={{ width: displayWidth, height: placeholderHeight }}
+        />
       )}
+    </div>
+  );
+}
+
+function OriginalPages({
+  id,
+  pageCount,
+  onWordClick,
+}: {
+  id: number;
+  pageCount: number;
+  onWordClick: WordClick;
+}) {
+  const [visiblePage, setVisiblePage] = useState(0);
+  const [zoom, setZoom] = useState(1);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => setContainerWidth(entry.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // The "current" page for the indicator/Prev-Next is whichever page has
+  // the most vertical overlap with the scroll viewport — computed directly
+  // from layout on every scroll rather than from per-page visibility
+  // callbacks, so there's exactly one deterministic answer even mid-scroll.
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    let raf = 0;
+    function updateVisiblePage() {
+      raf = 0;
+      const containerRect = container!.getBoundingClientRect();
+      let best = 0;
+      let bestOverlap = -Infinity;
+      pageRefs.current.forEach((el, idx) => {
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        const overlap = Math.min(rect.bottom, containerRect.bottom) - Math.max(rect.top, containerRect.top);
+        if (overlap > bestOverlap) {
+          bestOverlap = overlap;
+          best = idx;
+        }
+      });
+      setVisiblePage(best);
+    }
+    function onScroll() {
+      if (!raf) raf = requestAnimationFrame(updateVisiblePage);
+    }
+    updateVisiblePage();
+    container.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      container.removeEventListener("scroll", onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [pageCount]);
+
+  function scrollToPage(n: number) {
+    pageRefs.current[n]?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  return (
+    <div>
+      <div className="mb-3 flex items-center justify-center gap-4 text-sm">
+        <div className="flex items-center gap-2">
+          <button
+            disabled={visiblePage === 0}
+            onClick={() => scrollToPage(visiblePage - 1)}
+            className="rounded bg-gray-100 px-2 py-1 disabled:opacity-40"
+          >
+            ← Prev
+          </button>
+          <span>
+            Page {visiblePage + 1} of {pageCount}
+          </span>
+          <button
+            disabled={visiblePage >= pageCount - 1}
+            onClick={() => scrollToPage(visiblePage + 1)}
+            className="rounded bg-gray-100 px-2 py-1 disabled:opacity-40"
+          >
+            Next →
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setZoom((z) => Math.max(ZOOM_MIN, +(z - ZOOM_STEP).toFixed(2)))}
+            className="rounded bg-gray-100 px-2 py-1"
+            title="Zoom out"
+          >
+            −
+          </button>
+          <span className="w-12 text-center tabular-nums">{Math.round(zoom * 100)}%</span>
+          <button
+            onClick={() => setZoom((z) => Math.min(ZOOM_MAX, +(z + ZOOM_STEP).toFixed(2)))}
+            className="rounded bg-gray-100 px-2 py-1"
+            title="Zoom in"
+          >
+            +
+          </button>
+          <button
+            onClick={() => setZoom(1)}
+            title="Fit page to window width"
+            className="rounded bg-gray-100 px-2 py-1"
+          >
+            Fit width
+          </button>
+        </div>
+      </div>
+
+      <div ref={scrollRef} className="h-[calc(100vh-190px)] overflow-y-auto">
+        {Array.from({ length: pageCount }, (_, pageNumber) => (
+          <div
+            key={pageNumber}
+            ref={(el) => {
+              pageRefs.current[pageNumber] = el;
+            }}
+          >
+            <PageSlot
+              id={id}
+              pageNumber={pageNumber}
+              containerWidth={containerWidth}
+              zoom={zoom}
+              onWordClick={onWordClick}
+            />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -279,7 +431,7 @@ export function Reader({ id, onBack }: { id: number; onBack: () => void }) {
 
       {error && <p className="text-red-600">{error}</p>}
 
-      {doc && (
+      {doc && view === "reflow" && (
         <div style={{ width: `${settings.text_width_pct}%`, marginLeft: "auto", marginRight: "auto" }}>
           <h1 className="mb-1 text-xl font-semibold">{doc.title}</h1>
           {doc.page_count != null && (
@@ -287,21 +439,26 @@ export function Reader({ id, onBack }: { id: number; onBack: () => void }) {
               {doc.page_count} page{doc.page_count === 1 ? "" : "s"}
             </p>
           )}
+          <Reflow
+            blocks={doc.content_blocks}
+            plainText={doc.extracted_text}
+            textStyle={{
+              fontFamily: fontFamilyFor(charSet, settings.font_family),
+              fontSize: settings.font_size,
+              lineHeight: settings.line_height,
+            }}
+            onWordClick={handleWordClick}
+          />
+        </div>
+      )}
 
-          {view === "reflow" ? (
-            <Reflow
-              blocks={doc.content_blocks}
-              plainText={doc.extracted_text}
-              textStyle={{
-                fontFamily: fontFamilyFor(charSet, settings.font_family),
-                fontSize: settings.font_size,
-                lineHeight: settings.line_height,
-              }}
-              onWordClick={handleWordClick}
-            />
-          ) : (
-            <OriginalPages id={id} pageCount={doc.page_count ?? 1} onWordClick={handleWordClick} />
-          )}
+      {doc && view === "pages" && (
+        // Full width regardless of the Reflow-only text-width setting — the
+        // zoom control below is Original Pages' own way to scale to the
+        // screen, independent of reading-column width preferences.
+        <div className="w-full">
+          <h1 className="mb-1 text-xl font-semibold">{doc.title}</h1>
+          <OriginalPages id={id} pageCount={doc.page_count ?? 1} onWordClick={handleWordClick} />
         </div>
       )}
 
